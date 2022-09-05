@@ -2,6 +2,7 @@ use std::{cell::RefCell, mem, rc::Rc};
 
 use pulse::{
 	context::{self, Context},
+	def::BufferAttr,
 	mainloop::standard::{IterateResult, Mainloop},
 	proplist::{self, Proplist},
 	sample::{Format, Spec},
@@ -67,12 +68,34 @@ fn main() {
 
 	playback_stream
 		.borrow_mut()
-		.connect_playback(None, None, stream::FlagSet::START_CORKED, None, None)
+		.connect_playback(
+			None,
+			Some(&BufferAttr {
+				maxlength: u32::MAX,
+				tlength: 1024,
+				prebuf: u32::MAX,
+				minreq: u32::MAX,
+				fragsize: 0,
+			}),
+			stream::FlagSet::empty(),
+			None,
+			None,
+		)
 		.expect("Failed to connect playback stream");
 
 	recording_stream
 		.borrow_mut()
-		.connect_record(None, None, stream::FlagSet::START_CORKED)
+		.connect_record(
+			None,
+			Some(&BufferAttr {
+				maxlength: u32::MAX,
+				tlength: 0,
+				prebuf: 0,
+				minreq: 0,
+				fragsize: 1024 * mem::size_of::<f32>() as u32,
+			}),
+			stream::FlagSet::empty(),
+		)
 		.expect("Failed to connect recording stream");
 
 	// wait for streams
@@ -101,14 +124,11 @@ fn main() {
 	loop {
 		poll_mainloop();
 
-		if recording_stream.is_corked().unwrap() {
-			recording_stream.uncork(None);
-		}
-
 		match recording_stream.peek().unwrap() {
 			PeekResult::Empty => {}
 			PeekResult::Hole(_) => recording_stream.discard().unwrap(),
 			PeekResult::Data(data) => {
+				let start = std::time::Instant::now();
 				let audio_iter = data
 					.chunks(mem::size_of::<f32>())
 					.map(|chunk| f32::from_le_bytes(<[u8; 4]>::try_from(chunk).unwrap()))
@@ -122,9 +142,6 @@ fn main() {
 
 				println!("Vec size: {}, avg volume: {avg:?}", data.len() / 4);
 
-				if playback_stream.is_corked().unwrap() {
-					playback_stream.uncork(None);
-				}
 				playback_stream
 					.write(
 						&audio_data
@@ -139,6 +156,7 @@ fn main() {
 					.unwrap();
 
 				recording_stream.discard().unwrap();
+				println!("Processing took {:?}", std::time::Instant::now().duration_since(start));
 			}
 		}
 	}
