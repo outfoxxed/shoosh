@@ -129,11 +129,18 @@ fn main() {
 			PeekResult::Hole(_) => recording_stream.discard().unwrap(),
 			PeekResult::Data(data) => {
 				let start = std::time::Instant::now();
-				let audio_iter = data
+				let ichunks = data
 					.chunks(mem::size_of::<f32>())
 					.map(|chunk| f32::from_le_bytes(<[u8; 4]>::try_from(chunk).unwrap()))
-					.map(|datum| (if datum > 0.06 { 0.06 / datum } else { 1.0 }) * datum)
 					.collect::<Vec<f32>>();
+				let audio_iter = ichunks
+					.chunks(1024)
+					.map(|data| {
+						let avg = data.iter().fold(0.0, |a: f32, &b| a.max(b));
+						let mul = if avg > 0.01 { 0.01 / avg } else { 1.0 };
+						data.iter().map(move |d| d * mul)
+					})
+					.flatten();
 				let audio_data = Vec::from_iter(audio_iter);
 				let avg = audio_data
 					.iter()
