@@ -1,4 +1,4 @@
-use std::{cell::RefCell, mem, rc::Rc};
+use std::mem;
 
 use pulse::{
 	context::{self, Context},
@@ -22,19 +22,16 @@ fn main() {
 		.set_str(proplist::properties::APPLICATION_NAME, "Shoosh")
 		.unwrap();
 
-	let mainloop = Rc::new(RefCell::new(Mainloop::new().expect("Failed to create mainloop")));
+	let mut mainloop = Mainloop::new().expect("Failed to create mainloop");
 
-	let context = Rc::new(RefCell::new(
-		Context::new_with_proplist(&*mainloop.borrow(), "Shoosh", &proplist)
-			.expect("Failed to create context"),
-	));
+	let mut context = Context::new_with_proplist(&mainloop, "Shoosh", &proplist)
+		.expect("Failed to create context");
 
 	context
-		.borrow_mut()
 		.connect(None, context::FlagSet::NOFLAGS, None)
 		.expect("Failed to connect to pulseaudio");
 
-	let poll_mainloop = || match mainloop.borrow_mut().iterate(false) {
+	let poll_mainloop = |mainloop: &mut Mainloop| match mainloop.iterate(false) {
 		IterateResult::Err(_) | IterateResult::Quit(_) => {
 			eprintln!("Iterate unsuccessful, exiting...");
 			return
@@ -44,9 +41,9 @@ fn main() {
 
 	// wait for context
 	loop {
-		poll_mainloop();
+		poll_mainloop(&mut mainloop);
 
-		match context.borrow().get_state() {
+		match context.get_state() {
 			context::State::Ready => break,
 			context::State::Failed | context::State::Terminated => {
 				eprintln!("Context state is failed or terminated, exiting...");
@@ -56,18 +53,13 @@ fn main() {
 		}
 	}
 
-	let playback_stream = Rc::new(RefCell::new(
-		Stream::new(&mut context.borrow_mut(), "Shoosh sink", &spec, None)
-			.expect("Failed to create playback stream"),
-	));
+	let mut playback_stream = Stream::new(&mut context, "Shoosh sink", &spec, None)
+		.expect("Failed to create playback stream");
 
-	let recording_stream = Rc::new(RefCell::new(
-		Stream::new(&mut context.borrow_mut(), "Shoosh source", &spec, None)
-			.expect("Failed to create recording stream"),
-	));
+	let mut recording_stream = Stream::new(&mut context, "Shoosh source", &spec, None)
+		.expect("Failed to create recording stream");
 
 	playback_stream
-		.borrow_mut()
 		.connect_playback(
 			None,
 			Some(&BufferAttr {
@@ -84,7 +76,6 @@ fn main() {
 		.expect("Failed to connect playback stream");
 
 	recording_stream
-		.borrow_mut()
 		.connect_record(
 			None,
 			Some(&BufferAttr {
@@ -100,10 +91,10 @@ fn main() {
 
 	// wait for streams
 	'wait_streams: loop {
-		poll_mainloop();
+		poll_mainloop(&mut mainloop);
 
 		for stream in [&playback_stream, &recording_stream] {
-			match stream.borrow().get_state() {
+			match stream.get_state() {
 				stream::State::Ready => {}
 				stream::State::Failed | stream::State::Terminated => {
 					eprintln!("Stream state is failed or terminated, exiting...");
@@ -116,13 +107,8 @@ fn main() {
 		break
 	}
 
-	println!("Ready");
-	// still leaving this from example in case of switching to threaded mode
-	let mut recording_stream = recording_stream.borrow_mut();
-	let mut playback_stream = playback_stream.borrow_mut();
-
 	loop {
-		poll_mainloop();
+		poll_mainloop(&mut mainloop);
 
 		match recording_stream.peek().unwrap() {
 			PeekResult::Empty => {}
