@@ -112,7 +112,7 @@ fn main() {
 	}
 
 	let volume_cap = 0.05; // TODO
-	const BUFFER_SIZE: usize = 64;
+	const BUFFER_SIZE: usize = 128;
 	let mut volume_buffer = RingBuffer::<f32>::new(BUFFER_SIZE);
 	loop {
 		poll_mainloop(&mut mainloop);
@@ -127,7 +127,7 @@ fn main() {
 					.map(|chunk| f32::from_le_bytes(<[u8; 4]>::try_from(chunk).unwrap()))
 					.collect::<Vec<f32>>();
 				let audio_data = float_data
-					.chunks(128)
+					.chunks(64)
 					.map(|chunk| {
 						let chunk_max = chunk
 							.iter()
