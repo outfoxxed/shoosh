@@ -9,6 +9,10 @@ use pulse::{
 	stream::{self, PeekResult, SeekMode, Stream},
 };
 
+use crate::ringbuffer::RingBuffer;
+
+mod ringbuffer;
+
 fn main() {
 	let spec = Spec {
 		format: Format::F32le,
@@ -107,6 +111,9 @@ fn main() {
 		break
 	}
 
+	let volume_cap = 0.05; // TODO
+	const BUFFER_SIZE: usize = 64;
+	let mut volume_buffer = RingBuffer::<f32>::new(BUFFER_SIZE);
 	loop {
 		poll_mainloop(&mut mainloop);
 
@@ -115,25 +122,35 @@ fn main() {
 			PeekResult::Hole(_) => recording_stream.discard().unwrap(),
 			PeekResult::Data(data) => {
 				let start = std::time::Instant::now();
-				let ichunks = data
+				let float_data = data
 					.chunks(mem::size_of::<f32>())
 					.map(|chunk| f32::from_le_bytes(<[u8; 4]>::try_from(chunk).unwrap()))
 					.collect::<Vec<f32>>();
-				let audio_iter = ichunks
-					.chunks(1024)
-					.map(|data| {
-						let avg = data.iter().fold(0.0, |a: f32, &b| a.max(b));
-						let mul = if avg > 0.01 { 0.01 / avg } else { 1.0 };
-						data.iter().map(move |d| d * mul)
-					})
-					.flatten();
-				let audio_data = Vec::from_iter(audio_iter);
-				let avg = audio_data
-					.iter()
-					.map(|f| f.abs())
-					.fold(0.0, |a: f32, b| a.max(b));
+				let audio_data = float_data
+					.chunks(128)
+					.map(|chunk| {
+						let chunk_max = chunk
+							.iter()
+							.fold(0.0, |a: f32, &b| f32::max(a.abs(), b.abs()));
+						volume_buffer.append(&[chunk_max]);
 
-				println!("Vec size: {}, avg volume: {avg:?}", data.len() / 4);
+						let weighted_average = volume_buffer
+							.iter()
+							.enumerate()
+							.map(|(i, v)| v * (i as f32 / BUFFER_SIZE as f32))
+							.sum::<f32>() / (BUFFER_SIZE as f32 * 0.5);
+
+						let volume_multiplier =
+							volume_cap / weighted_average.max(volume_cap).max(chunk_max);
+						/*println!(
+							"VolMul: {volume_multiplier:.03} | WAVG: {weighted_average:.3} | \
+							 CWAVG: {:.3}",
+							weighted_average.max(volume_cap).max(chunk_max)
+						);*/
+						chunk.into_iter().map(move |v| v * volume_multiplier)
+					})
+					.flatten()
+					.collect::<Vec<_>>();
 
 				playback_stream
 					.write(
