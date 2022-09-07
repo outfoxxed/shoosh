@@ -1,4 +1,4 @@
-use std::mem;
+use std::{mem, sync::mpsc};
 
 use pulse::{
 	context::{self, Context},
@@ -35,7 +35,7 @@ fn main() {
 		.connect(None, context::FlagSet::NOFLAGS, None)
 		.expect("Failed to connect to pulseaudio");
 
-	let poll_mainloop = |mainloop: &mut Mainloop| match mainloop.iterate(false) {
+	let poll_mainloop = |mainloop: &mut Mainloop| match mainloop.iterate(true) {
 		IterateResult::Err(_) | IterateResult::Quit(_) => {
 			eprintln!("Iterate unsuccessful, exiting...");
 			return
