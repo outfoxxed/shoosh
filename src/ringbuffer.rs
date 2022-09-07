@@ -25,19 +25,6 @@ impl<T: Clone> RingBuffer<T> {
 			.chain(&self.buffer[..self.index])
 	}
 
-	pub fn last(&self) -> Option<&T> {
-		if self.buffer.is_empty() {
-			None
-		} else {
-			let idx = if self.index == 0 {
-				self.size - 1
-			} else {
-				self.index - 1
-			};
-			self.buffer.get(idx)
-		}
-	}
-
 	/// Appends a slice of values into the ring buffer.
 	/// Only the last <size of ring> elements are kept.
 	pub fn append(&mut self, mut elements: &[T]) {
