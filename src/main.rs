@@ -7,7 +7,7 @@ use pulse::{
 	mainloop::standard::{IterateResult, Mainloop},
 	proplist::{self, Proplist},
 	sample::{Format, Spec},
-	stream::{self, PeekResult, SeekMode, Stream},
+	stream::{self, PeekResult, SeekMode, Stream}, volume::{VolumeDB, VolumeLinear},
 };
 
 use crate::ringbuffer::RingBuffer;
@@ -22,8 +22,7 @@ fn main() {
 	opts.optopt(
 		"v",
 		"volume",
-		"maximum allowable volume,\nplay with it until you get it right, probably somewhere \
-		 between 0.0 and 1.0",
+		"maximum allowable volume in decibels",
 		"VOLUME",
 	);
 	let matches = match opts.parse(&args[1..]) {
@@ -39,21 +38,21 @@ fn main() {
 		return
 	}
 
-	let volume_cap = match matches.opt_get::<f32>("v") {
+	let volume_cap_db = match matches.opt_get::<f32>("v") {
 		Ok(None) => {
 			println!("volume cap must be specified (-v)");
 			return
 		}
 		Err(ParseFloatError { .. }) => {
-			println!("volume cap must be a decimal value");
+			println!("volume cap must be specified in decibels (ex: -12.5)");
 			return
 		}
 		Ok(Some(x)) => x,
 	};
 
-	println!("Volume cap: {volume_cap}");
+	let volume_cap_linear = VolumeLinear::from(VolumeDB(volume_cap_db as f64)).0 as f32;
 
-	run(volume_cap);
+	run(volume_cap_linear);
 }
 
 fn run(volume_cap: f32) {
