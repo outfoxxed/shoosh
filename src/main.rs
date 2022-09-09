@@ -1,5 +1,6 @@
-use std::{mem, sync::mpsc};
+use std::{env, mem, num::ParseFloatError};
 
+use getopts::Options;
 use pulse::{
 	context::{self, Context},
 	def::BufferAttr,
@@ -14,6 +15,48 @@ use crate::ringbuffer::RingBuffer;
 mod ringbuffer;
 
 fn main() {
+	let args = env::args().collect::<Vec<_>>();
+
+	let mut opts = Options::new();
+	opts.optflag("h", "help", "print this help");
+	opts.optopt(
+		"v",
+		"volume",
+		"maximum allowable volume,\nplay with it until you get it right, probably somewhere \
+		 between 0.0 and 1.0",
+		"VOLUME",
+	);
+	let matches = match opts.parse(&args[1..]) {
+		Ok(x) => x,
+		Err(e) => {
+			println!("{}", e.to_string());
+			return
+		}
+	};
+
+	if matches.opt_present("h") {
+		print!("{}", opts.usage(&format!("usage: {} [options]", args[0].to_owned())));
+		return
+	}
+
+	let volume_cap = match matches.opt_get::<f32>("v") {
+		Ok(None) => {
+			println!("volume cap must be specified (-v)");
+			return
+		}
+		Err(ParseFloatError { .. }) => {
+			println!("volume cap must be a decimal value");
+			return
+		}
+		Ok(Some(x)) => x,
+	};
+
+	println!("Volume cap: {volume_cap}");
+
+	run(volume_cap);
+}
+
+fn run(volume_cap: f32) {
 	let spec = Spec {
 		format: Format::F32le,
 		channels: 2,
@@ -111,7 +154,6 @@ fn main() {
 		break
 	}
 
-	let volume_cap = 0.05; // TODO
 	const BUFFER_SIZE: usize = 128;
 	let mut volume_buffer = RingBuffer::<f32>::new(BUFFER_SIZE);
 	loop {

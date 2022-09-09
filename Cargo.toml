@@ -3,6 +3,9 @@ name = "shoosh"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+getopts = "^0.2"
+
 [dependencies.pulse]
 package = "libpulse-binding"
 version = "^2.0"
